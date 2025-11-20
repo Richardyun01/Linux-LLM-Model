@@ -1,5 +1,6 @@
 import torch
 
+# checks CUDA environment
 print("CUDA Available: ", torch.cuda.is_available())
 
 if torch.cuda.is_available():
