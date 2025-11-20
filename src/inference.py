@@ -11,12 +11,15 @@ def load_model(
 	tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token = tokenizer.unk_token
+		tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
+	tokenizer.padding_side = "right"
 
 	model = AutoModelForCausalLM.from_pretrained(
 		model_name,
 		torch_dtype=torch.float16 if device == "cuda" else torch.float32,
 		device_map="auto" if device == "cuda" else None,
+#		trust_remote_code=True,
 	)
 
 	model.config.pad_token_id = tokenizer.pad_token_id
@@ -32,18 +35,15 @@ def generate(
 	temperature: float = 0.7,
 	top_p: float = 0.9,
 ):
-	messages = [
-		{"role": "system", "content": "You are a helpful assistant."},
-		{"role": "user", "content": user_message},
-	]
+	prompt = f"<|user|>\n{user_message}\n<|end|>\n<|assistant|>"
 
-	input_ids = tokenizer.apply_chat_template(
-		messages,
+	inputs = tokenizer(
+		prompt,
 		return_tensors="pt",
-		add_generateion_prompt=True,
-	).to(device)
-
-	attention_mask = torch.ones_like(input_ids)
+		padding=True,
+	)
+	input_ids = inputs["input_ids"].to(device)
+	attention_mask = inputs["attention_mask"].to(device)
 
 	with torch.no_grad():
 		output_ids = model.generate(
@@ -57,6 +57,6 @@ def generate(
 			pad_token_id=tokenizer.eos_token_id,
 		)
 
-	generated_ids = output_ids[0][input_ids.shape[-1]:]
+	generated_ids = output_ids[0, input_ids.shape[-1]:]
 	response = tokenizer.decode(generated_ids, skip_special_tokens=True)
 	return response.strip()
